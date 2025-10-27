@@ -1,0 +1,25 @@
+.pdf-merger-container {
+  width: 600px;
+  margin: 40px auto;
+  text-align: center;
+  font-family: Arial, sans-serif;
+}
+
+.file-list {
+  margin: 20px 0;
+  border: 1px dashed #aaa;
+  padding: 10px;
+  background: #fafafa;
+}
+
+.file-box {
+  background: white;
+  border: 1px solid #ccc;
+  margin: 5px;
+  padding: 8px;
+  cursor: move;
+}
+
+.merged-pdf-controls {
+  margin-top: 20px;
+}

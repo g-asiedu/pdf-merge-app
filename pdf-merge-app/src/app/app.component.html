@@ -1,0 +1,38 @@
+<div class="pdf-merger-container">
+  <h2>Client-Side PDF Merger</h2>
+
+  <!-- Upload -->
+  <div class="upload-controls">
+    <input
+      type="file"
+      (change)="reorderFiles($event)"
+      multiple
+      accept=".pdf"
+    />
+  </div>
+
+  <!-- Reorderable list using Dragula -->
+  <div class="file-list" [dragula]='"FILES"' [dragulaModel]="uploadedPdfs">
+    <div class="file-box" *ngFor="let pdf of uploadedPdfs; let i = index">
+      {{ i + 1 }}. {{ pdf.name }}
+      <span class="hint">(drag to reorder)</span>
+    </div>
+  </div>
+
+  <!-- Merged PDF download section -->
+  <div *ngIf="mergedPdf" class="merged-pdf-controls">
+    <h3>Merged Document Ready</h3>
+    <input
+      type="text"
+      [(ngModel)]="newFileName"
+      placeholder="New Filename (e.g. combined.pdf)"
+    />
+    <button (click)="downloadMergedPDF()">
+      Download Merged PDF ({{ uploadedPdfs.length }} files)
+    </button>
+  </div>
+
+  <!-- Status messages -->
+  <p *ngIf="uploadedPdfs.length > 0 && !mergedPdf">Processing files...</p>
+  <p *ngIf="uploadedPdfs.length < 2">Upload at least two PDFs to enable merging.</p>
+</div>
