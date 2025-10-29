@@ -1,25 +1,53 @@
 .pdf-merger-container {
-  width: 600px;
-  margin: 40px auto;
-  text-align: center;
+  max-width: 600px;
+  margin: auto;
   font-family: Arial, sans-serif;
 }
 
-.file-list {
-  margin: 20px 0;
-  border: 1px dashed #aaa;
-  padding: 10px;
-  background: #fafafa;
+.controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 1em;
 }
 
-.file-box {
-  background: white;
-  border: 1px solid #ccc;
-  margin: 5px;
-  padding: 8px;
-  cursor: move;
+.url-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0.5em;
 }
 
-.merged-pdf-controls {
-  margin-top: 20px;
+.url-entry input {
+  flex: 1;
+  padding: 4px 6px;
+}
+
+.status {
+  font-size: 0.9em;
+}
+
+.status.success {
+  color: green;
+}
+
+.status.failed {
+  color: red;
+}
+
+.progress {
+  margin-top: 10px;
+}
+
+.pdf-row {
+  margin: 5px 0;
+}
+.controls button {
+  margin-right: 5px;
+}
+progress {
+  width: 300px;
+  height: 10px;
+}
+.result-actions button {
+  margin-right: 10px;
 }

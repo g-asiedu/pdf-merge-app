@@ -1,38 +1,49 @@
 <div class="pdf-merger-container">
-  <h2>Client-Side PDF Merger</h2>
+  <h2>PDF Merger (via URL)</h2>
 
-  <!-- Upload -->
-  <div class="upload-controls">
-    <input
-      type="file"
-      (change)="reorderFiles($event)"
-      multiple
-      accept=".pdf"
-    />
+  <div class="controls">
+    <button (click)="addPdfUrl()">+ Add PDF URL</button>
+    <button (click)="clearAll()">Clear All</button>
   </div>
 
-  <!-- Reorderable list using Dragula -->
-  <div class="file-list" [dragula]='"FILES"' [dragulaModel]="uploadedPdfs">
-    <div class="file-box" *ngFor="let pdf of uploadedPdfs; let i = index">
-      {{ i + 1 }}. {{ pdf.name }}
-      <span class="hint">(drag to reorder)</span>
-    </div>
-  </div>
-
-  <!-- Merged PDF download section -->
-  <div *ngIf="mergedPdf" class="merged-pdf-controls">
-    <h3>Merged Document Ready</h3>
+  <div *ngFor="let pdf of pdfUrls; let i = index" class="pdf-row">
     <input
       type="text"
-      [(ngModel)]="newFileName"
-      placeholder="New Filename (e.g. combined.pdf)"
+      [(ngModel)]="pdf.url"
+      placeholder="Enter or paste PDF URL"
+      style="width: 400px"
     />
-    <button (click)="downloadMergedPDF()">
-      Download Merged PDF ({{ uploadedPdfs.length }} files)
+    <button (click)="removePdf(i)">Remove</button>
+    <span
+      *ngIf="pdf.status === 'pending'"
+      style="color: gray"
+    >
+      {{ pdf.progress }}%
+    </span>
+    <span *ngIf="pdf.status === 'success'" style="color: green">
+      success ({{ pdf.sizeMB }} MB)
+    </span>
+    <span *ngIf="pdf.status === 'error'" style="color: red">
+      failed — {{ pdf.errorMessage }}
+    </span>
+  </div>
+
+  <div class="merge-controls">
+    <button (click)="mergePdfs()" [disabled]="pdfUrls.length < 2 || merging">
+      {{ merging ? 'Merging...' : 'Merge PDFs' }}
     </button>
   </div>
 
-  <!-- Status messages -->
-  <p *ngIf="uploadedPdfs.length > 0 && !mergedPdf">Processing files...</p>
-  <p *ngIf="uploadedPdfs.length < 2">Upload at least two PDFs to enable merging.</p>
+  <!-- Merge progress -->
+  <div *ngIf="merging" class="progress-container">
+    <p>Merging... {{ mergeProgress }}%</p>
+    <progress [value]="mergeProgress" max="100"></progress>
+  </div>
+
+  <!-- Result actions -->
+  <div *ngIf="mergedPdf && !merging" class="result-actions">
+    <h3>Merge Complete!</h3>
+    <button (click)="viewMergedPdf()">View PDF</button>
+    <button (click)="downloadMergedPdf()">Download PDF</button>
+  </div>
 </div>

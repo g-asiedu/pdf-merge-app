@@ -1,113 +1,157 @@
-import { Component, OnInit } from '@angular/core';
-import { DragulaService } from 'ng2-dragula';
+import { Component } from '@angular/core';
 import * as PDFLib from 'pdf-lib';
+
+interface PdfUrlEntry {
+  url: string;
+  status: 'pending' | 'success' | 'error';
+  progress: number; // percentage
+  sizeMB?: number;
+  errorMessage?: string;
+  bytes?: Uint8Array;
+}
 
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css']
+  styleUrls: ['./app.component.css'],
 })
-export class AppComponent implements OnInit {
-  title = 'app';
-  uploadedPdfs: File[] = [];
+export class AppComponent {
+  pdfUrls: PdfUrlEntry[] = [];
   mergedPdf: Uint8Array | null = null;
-  newFileName = 'merged_document.pdf';
+  merging = false;
+  mergeProgress = 0;
 
-  constructor(private dragulaService: DragulaService) {
-    // Listen for drag-drop reorder event
-    this.dragulaService.dropModel.subscribe(() => {
-      this.coordinateMergePDFs();
-    });
+  addPdfUrl() {
+    this.pdfUrls.push({ url: '', status: 'pending', progress: 0 });
   }
 
-  ngOnInit(): void {}
-
-  /** Capture uploaded files */
-  reorderFiles(event: any): void {
-    const files: FileList = event.target.files;
-    for (let i = 0; i < files.length; i++) {
-      this.uploadedPdfs.push(files[i]);
-    }
-    this.coordinateMergePDFs();
+  removePdf(index: number) {
+    this.pdfUrls.splice(index, 1);
   }
 
-  /** Read File as Uint8Array */
-  private readFileAsUint8Array(file: File): Promise<Uint8Array> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (event: any) => {
-        if (event.target && event.target.result) {
-          resolve(new Uint8Array(event.target.result));
-        } else {
-          reject('Could not read the PDF file');
+  clearAll() {
+    this.pdfUrls = [];
+    this.mergedPdf = null;
+    this.mergeProgress = 0;
+  }
+
+  /** --- Parallel download with progress and batch limiting --- */
+  async downloadAllPdfs(concurrency = 5) {
+    const queue = Array.from({ length: this.pdfUrls.length }, (_, i) => i);
+    const workers: Promise<void>[] = [];
+
+    const worker = async () => {
+      while (queue.length > 0) {
+        const index = queue.shift();
+        if (index === undefined) return;
+        const entry = this.pdfUrls[index];
+        entry.status = 'pending';
+        try {
+          entry.bytes = await this.fetchPdfWithProgress(entry);
+          entry.status = 'success';
+        } catch (err: any) {
+          entry.status = 'error';
+          entry.errorMessage = err.message || 'Download failed';
         }
-      };
+      }
+    };
 
-      reader.onerror = (error) => reject(error);
-      reader.readAsArrayBuffer(file);
-    });
+    for (let i = 0; i < concurrency; i++) {
+      workers.push(worker());
+    }
+
+    await Promise.allSettled(workers);
   }
 
-  /** Merge multiple PDFs into one */
-  async coordinateMergePDFs(): Promise<void> {
-    if (this.uploadedPdfs.length < 2) {
-      this.mergedPdf = null;
-      return;
+  /** --- Download single PDF with streaming progress --- */
+  private async fetchPdfWithProgress(entry: PdfUrlEntry): Promise<Uint8Array> {
+    const response = await fetch(entry.url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const contentLength = Number(response.headers.get('Content-Length')) || 0;
+    const reader = response.body?.getReader();
+    const chunks: BlobPart[] = [];
+    let received = 0;
+
+    if (!reader) throw new Error('No readable stream');
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        received += value.length;
+        if (contentLength) {
+          entry.progress = Math.round((received / contentLength) * 100);
+        } else {
+          entry.progress = Math.min(100, entry.progress + 10);
+        }
+      }
     }
+
+    const blob = new Blob(chunks);
+    entry.sizeMB = +(blob.size / (1024 * 1024)).toFixed(2);
+    const buffer = await blob.arrayBuffer();
+    return new Uint8Array(buffer);
+  }
+
+  /** --- Merge PDFs after downloads --- */
+  async mergePdfs() {
+    this.merging = true;
+    this.mergeProgress = 0;
+    this.mergedPdf = null;
 
     try {
-      const pdfBuffers: Uint8Array[] = await Promise.all(
-        this.uploadedPdfs.map(f => this.readFileAsUint8Array(f))
-      );
-      this.mergedPdf = await this.mergePDFsIntoOne(pdfBuffers);
-    } catch (err) {
-      console.error('Error merging PDFs:', err);
-      alert('Failed to merge PDFs.');
+      // Step 1: Download all
+      await this.downloadAllPdfs(5);
+
+      const valid = this.pdfUrls.filter((f) => f.status === 'success');
+      if (valid.length < 2) {
+        alert('Need at least two successful PDFs to merge.');
+        this.merging = false;
+        return;
+      }
+
+      // Step 2: Create merged document
+    const merged = await PDFLib.PDFDocument.create();
+
+    for (let i = 0; i < valid.length; i++) {
+      const src = await PDFLib.PDFDocument.load(valid[i].bytes!);
+      const copiedPages = await merged.copyPages(src, src.getPageIndices());
+      copiedPages.forEach((page) => merged.addPage(page));
+      this.mergeProgress = Math.round(((i + 1) / valid.length) * 100);
+    }
+
+
+      // Step 3: Save merged output
+      this.mergedPdf = await merged.save();
+      this.merging = false;
+      this.mergeProgress = 100;
+    } catch (error) {
+      console.error('Merge failed:', error);
+      alert('Merge failed. See console for details.');
+      this.merging = false;
     }
   }
 
-  /** Merge logic */
-  async mergePDFsIntoOne(pdfs: Uint8Array[]): Promise<Uint8Array> {
-  // Create an empty output PDF
-  const mergedPdf = PDFLib.PDFDocumentFactory.create();
-
-  // Iterate through each uploaded PDF file
-  for (const pdfBytes of pdfs) {
-    // Load source PDF
-    const src = PDFLib.PDFDocumentFactory.load(pdfBytes);
-
-    // Get all pages from the source PDF
-    const pages = src.getPages();
-
-    // Add each page to the merged document
-    pages.forEach((page: any) => {
-      mergedPdf.addPage(page);
-    });
+  /** --- Post-merge actions --- */
+  viewMergedPdf() {
+    if (!this.mergedPdf) return;
+    const blob = new Blob([this.mergedPdf as any as ArrayBuffer], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
   }
 
-  // Save the combined document to bytes
-  const mergedPdfBytes = PDFLib.PDFDocumentWriter.saveToBytes(mergedPdf);
-
-  return mergedPdfBytes;
-}
-
-
-  /** Download merged PDF */
-  downloadMergedPDF(): void {
+  downloadMergedPdf() {
     if (!this.mergedPdf) return;
-
-    const blob = new Blob([this.mergedPdf as any as ArrayBuffer], {
-      type: 'application/pdf'
-    });
-    const url = window.URL.createObjectURL(blob);
+    const blob = new Blob([this.mergedPdf as any as ArrayBuffer], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = this.newFileName.endsWith('.pdf')
-      ? this.newFileName
-      : `${this.newFileName}.pdf`;
+    a.download = 'merged.pdf';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    URL.revokeObjectURL(url);
   }
 }
